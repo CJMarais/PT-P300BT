@@ -1,0 +1,26 @@
+:root {
+  --ink: #172026;
+  --muted: #66737c;
+  --accent: #087e8b;
+  --paper: #f6f3ea;
+}
+
+body { background: #eef1f2; color: var(--ink); }
+.navbar { box-shadow: 0 2px 12px rgba(23, 32, 38, .08); }
+.app-shell { max-width: 1240px; margin: 0 auto; }
+.card { border: 0; border-radius: 18px; box-shadow: 0 8px 30px rgba(23, 32, 38, .08); }
+.preview-stage {
+  min-height: 310px; padding: 32px; border-radius: 14px;
+  background: radial-gradient(circle at top, #ffffff, #e7ebed);
+  display: grid; place-items: center; overflow: auto;
+}
+.tape-preview {
+  max-width: 100%; height: auto; min-height: 82px;
+  image-rendering: pixelated; background: var(--paper);
+  box-shadow: 0 8px 22px rgba(23, 32, 38, .22);
+}
+.preview-placeholder, .preview-error { color: var(--muted); text-align: center; }
+.preview-error { color: #a33a32; }
+.label-metrics { color: var(--muted); font-variant-numeric: tabular-nums; }
+.status-panel { min-height: 2.25rem; }
+.btn-primary { background: var(--accent); border-color: var(--accent); }

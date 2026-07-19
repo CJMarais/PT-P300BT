@@ -10,6 +10,21 @@ The [Brother P-touch Cube PT-P300BT labelling machine](https://support.brother.c
 
 This repository provides a command-line tool in pure Python to print from a computer.
 
+## Shiny user interface (development)
+
+The optional local Shiny application adds a live label preview and a guarded print
+workflow while reusing the existing serial printer protocol. Install the dependencies
+and start it from the repository root:
+
+```powershell
+python -m pip install -r requirements.txt
+shiny run --reload app.py
+```
+
+Then open the local address shown in the terminal. The first version supports text,
+font, alignment, padding, fixed minimum width, serial-port discovery, preview, and
+printing. Keep the application local to the computer connected to the printer.
+
 ## Features
 
 ### Text Rendering
