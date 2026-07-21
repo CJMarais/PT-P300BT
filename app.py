@@ -7,7 +7,7 @@ from shiny import App, reactive, render, ui
 
 from ptp300bt.models import LabelSpec
 from ptp300bt.printer import PrinterOptions, available_ports, print_raster
-from ptp300bt.rendering import render_label
+from ptp300bt.rendering import add_preview_guides, render_label, valid_font_sizes
 
 
 def system_fonts() -> dict[str, str]:
@@ -20,6 +20,9 @@ def system_fonts() -> dict[str, str]:
 
 
 FONTS = system_fonts()
+CABLE_DIAMETERS = {
+    str(value / 2): f"{value / 2:g} mm" for value in range(4, 41)
+}
 
 app_ui = ui.page_navbar(
     ui.nav_panel(
@@ -30,6 +33,11 @@ app_ui = ui.page_navbar(
                     ui.card_header("Label editor"),
                     ui.input_text_area("text", "Label text", "SERVER RACK 3", rows=4),
                     ui.input_select("font", "Font", choices=FONTS),
+                    ui.input_select(
+                        "font_size",
+                        "Font size",
+                        choices={"auto": "Auto — largest fit"},
+                    ),
                     ui.input_radio_buttons(
                         "alignment", "Alignment", {"left": "Left", "center": "Center", "right": "Right"},
                         selected="center", inline=True,
@@ -43,7 +51,28 @@ app_ui = ui.page_navbar(
                         "input.fixed_width === true",
                         ui.input_numeric("width_mm", "Minimum width (mm)", 50, min=5, max=473),
                     ),
+                    ui.input_checkbox("cable_mode", "Cable label — print text twice", False),
+                    ui.panel_conditional(
+                        "input.cable_mode === true",
+                        ui.layout_columns(
+                            ui.input_select(
+                                "cable_diameter",
+                                "Cable diameter",
+                                choices=CABLE_DIAMETERS,
+                                selected="6.0",
+                            ),
+                            ui.input_numeric(
+                                "cable_buffer",
+                                "Buffer each side (mm)",
+                                2.0,
+                                min=0,
+                                max=20,
+                                step=0.5,
+                            ),
+                        ),
+                    ),
                     ui.input_slider("line_spacing", "Line spacing", 0.8, 2.0, 1.2, step=0.05),
+                    ui.input_checkbox("show_guides", "Show rulers and print boundaries", False),
                     full_screen=True,
                 ),
                 ui.card(
@@ -105,8 +134,23 @@ def server(input, output, session):
             end_margin=int(input.margin()),
             line_spacing=float(input.line_spacing()),
             fixed_width_mm=float(input.width_mm()) if input.fixed_width() else None,
+            font_size=None if input.font_size() == "auto" else int(input.font_size()),
+            cable_diameter_mm=float(input.cable_diameter()) if input.cable_mode() else None,
+            cable_buffer_mm=float(input.cable_buffer()),
         )
         return render_label(spec)
+
+    @reactive.effect
+    def _update_font_sizes():
+        sizes = valid_font_sizes(input.text(), input.font(), float(input.line_spacing()))
+        choices = {"auto": f"Auto — largest fit ({sizes[-1]} pt)" if sizes else "Auto — largest fit"}
+        choices.update({str(size): f"{size} pt" for size in reversed(sizes)})
+        current = input.font_size()
+        ui.update_select(
+            "font_size",
+            choices=choices,
+            selected=current if current in choices else "auto",
+        )
 
     @render.ui
     def preview():
@@ -115,7 +159,8 @@ def server(input, output, session):
         except ValueError as error:
             return ui.div(str(error), class_="preview-stage preview-error")
         buffer = io.BytesIO()
-        result.preview.save(buffer, format="PNG")
+        preview_image = add_preview_guides(result.preview) if input.show_guides() else result.preview
+        preview_image.save(buffer, format="PNG")
         encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
         return ui.div(
             ui.tags.img(src=f"data:image/png;base64,{encoded}", class_="tape-preview", alt="Label preview"),
@@ -128,9 +173,12 @@ def server(input, output, session):
             result = rendered_label()
         except ValueError:
             return None
+        cable_detail = (
+            f" · {result.cable_gap_mm:.1f} mm cable gap" if result.cable_gap_mm is not None else ""
+        )
         return ui.p(
             f"{result.printed_length_mm:.1f} mm label · {result.used_length_mm:.1f} mm tape used · "
-            f"font size {result.font_size}",
+            f"font size {result.font_size}{cable_detail}",
             class_="label-metrics mt-3",
         )
 

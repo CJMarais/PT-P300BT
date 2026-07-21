@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import math
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -10,6 +11,7 @@ TAPE_IMAGE_HEIGHT = 88
 DOT_PITCH_MM = 0.149
 LEADER_AND_FOOTER_MM = 26.0
 MAX_USED_LENGTH_MM = 499.0
+TAPE_HEIGHT = 86
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +22,61 @@ class LabelRenderResult:
     font_size: int
     printed_length_mm: float
     used_length_mm: float
+    cable_gap_mm: float | None = None
+
+
+def add_preview_guides(image: Image.Image) -> Image.Image:
+    """Add the CLI's non-printing rulers and tape boundaries to a preview copy."""
+    guided = image.convert("RGB").copy()
+    draw = ImageDraw.Draw(guided)
+    print_border = (TAPE_IMAGE_HEIGHT - PRINTABLE_HEIGHT) // 2
+
+    draw.text((0, 1), "in", anchor="la", fill="magenta")
+    x = -1.0
+    index = 0
+    while x < guided.width:
+        if x > 0:
+            draw.line(
+                (int(x), print_border - (4 if index % 4 else 9), int(x), print_border - 2),
+                fill="magenta",
+                width=2,
+            )
+        x += 43.18
+        index += 1
+
+    draw.text((0, TAPE_IMAGE_HEIGHT - 12), "cm", anchor="la", fill="magenta")
+    x = -1.0
+    index = 0
+    while x < guided.width:
+        if x > 0:
+            draw.line(
+                (
+                    int(x),
+                    TAPE_IMAGE_HEIGHT - print_border + 1,
+                    int(x),
+                    TAPE_IMAGE_HEIGHT - print_border + (5 if index % 10 else 9),
+                ),
+                fill="magenta",
+                width=2,
+            )
+        x += 68
+        index += 1
+
+    for x in range(0, guided.width, 5):
+        draw.line((x, print_border - 1, x + 1, print_border - 1), fill="red")
+        draw.line(
+            (x, TAPE_IMAGE_HEIGHT - print_border, x + 1, TAPE_IMAGE_HEIGHT - print_border),
+            fill="red",
+        )
+
+    tape_border = (TAPE_IMAGE_HEIGHT - TAPE_HEIGHT) // 2
+    if tape_border > 0:
+        draw.line((0, tape_border - 1, guided.width, tape_border - 1), fill="cyan")
+        draw.line(
+            (0, TAPE_IMAGE_HEIGHT - tape_border, guided.width, TAPE_IMAGE_HEIGHT - tape_border),
+            fill="cyan",
+        )
+    return guided
 
 
 def _measure(lines: list[str], font: ImageFont.FreeTypeFont, spacing: float) -> tuple[int, int, int]:
@@ -47,13 +104,38 @@ def _fit_font(lines: list[str], font_path: str, spacing: float) -> tuple[ImageFo
     return best
 
 
+def valid_font_sizes(text: str, font_path: str, spacing: float = 1.2) -> list[int]:
+    """Return font sizes whose rendered text fits the printable tape height."""
+    if not Path(font_path).is_file() or not text.strip():
+        return []
+    lines = text.replace("\\n", "\n").splitlines() or [text]
+    sizes: list[int] = []
+    for size in range(1, 257):
+        font = ImageFont.truetype(font_path, size, encoding="utf-8")
+        if _measure(lines, font, spacing)[1] > PRINTABLE_HEIGHT:
+            break
+        sizes.append(size)
+    return sizes
+
+
 def render_label(spec: LabelSpec) -> LabelRenderResult:
     """Render a preview and the exact 1-bit raster expected by the printer."""
     spec.validate()
     lines = spec.text.replace("\\n", "\n").splitlines() or [spec.text]
-    font, font_size, (text_width, text_height, line_height) = _fit_font(
-        lines, spec.font_path, spec.line_spacing
-    )
+    if spec.font_size is None:
+        font, font_size, (text_width, text_height, line_height) = _fit_font(
+            lines, spec.font_path, spec.line_spacing
+        )
+    else:
+        if not Path(spec.font_path).is_file():
+            raise ValueError(f'Font file not found: "{spec.font_path}"')
+        font_size = spec.font_size
+        font = ImageFont.truetype(spec.font_path, font_size, encoding="utf-8")
+        text_width, text_height, line_height = _measure(lines, font, spec.line_spacing)
+        if text_height > PRINTABLE_HEIGHT:
+            raise ValueError(
+                f"Font size {font_size} exceeds the {PRINTABLE_HEIGHT}-dot printable height."
+            )
 
     natural_width = text_width + spec.horizontal_padding * 2 + spec.end_margin + 1
     if spec.fixed_width_mm is None:
@@ -76,6 +158,29 @@ def render_label(spec: LabelSpec) -> LabelRenderResult:
         else:
             x = spec.horizontal_padding
         draw.text((x, y + index * line_step), line, font=font, fill="black", anchor="lt")
+
+    cable_gap_mm = None
+    if spec.cable_diameter_mm is not None:
+        label_panel = preview
+        circumference_mm = math.pi * spec.cable_diameter_mm
+        cable_gap_mm = circumference_mm + spec.cable_buffer_mm * 2
+        gap_dots = max(1, round(cable_gap_mm / DOT_PITCH_MM))
+        preview = Image.new(
+            "RGB",
+            (label_panel.width * 2 + gap_dots, TAPE_IMAGE_HEIGHT),
+            "white",
+        )
+        preview.paste(label_panel, (0, 0))
+        preview.paste(label_panel, (label_panel.width + gap_dots, 0))
+
+        # Small printed ticks mark the centre of the cable wrap without drawing
+        # through the label's main printable area.
+        centre_x = label_panel.width + gap_dots // 2
+        guide_draw = ImageDraw.Draw(preview)
+        print_top = (TAPE_IMAGE_HEIGHT - PRINTABLE_HEIGHT) // 2
+        print_bottom = TAPE_IMAGE_HEIGHT - print_top
+        guide_draw.line((centre_x, print_top, centre_x, print_top + 6), fill="black")
+        guide_draw.line((centre_x, print_bottom - 6, centre_x, print_bottom), fill="black")
 
     rotated = ImageOps.mirror(
         ImageOps.invert(
@@ -100,4 +205,5 @@ def render_label(spec: LabelSpec) -> LabelRenderResult:
         font_size=font_size,
         printed_length_mm=printed_length,
         used_length_mm=used_length,
+        cable_gap_mm=cable_gap_mm,
     )

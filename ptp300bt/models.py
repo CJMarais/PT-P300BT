@@ -14,6 +14,9 @@ class LabelSpec:
     vertical_shift: int = 0
     threshold: int = 75
     fixed_width_mm: float | None = None
+    font_size: int | None = None
+    cable_diameter_mm: float | None = None
+    cable_buffer_mm: float = 2.0
 
     def validate(self) -> None:
         if not self.text.strip():
@@ -30,3 +33,9 @@ class LabelSpec:
             raise ValueError("Threshold must be between 0 and 255.")
         if self.fixed_width_mm is not None and not 5 <= self.fixed_width_mm <= 473:
             raise ValueError("Fixed label width must be between 5 and 473 mm.")
+        if self.font_size is not None and not 1 <= self.font_size <= 256:
+            raise ValueError("Font size must be between 1 and 256.")
+        if self.cable_diameter_mm is not None and not 1 <= self.cable_diameter_mm <= 50:
+            raise ValueError("Cable diameter must be between 1 and 50 mm.")
+        if not 0 <= self.cable_buffer_mm <= 20:
+            raise ValueError("Cable buffer must be between 0 and 20 mm.")
