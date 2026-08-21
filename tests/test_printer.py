@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 from types import SimpleNamespace
+import io
 
 from labelmaker import printer_not_ready_message
 from ptp300bt.printer import PrinterOptions, print_raster
@@ -11,14 +12,16 @@ class PrintRasterTests(unittest.TestCase):
     @patch("ptp300bt.printer.do_print_job", side_effect=SystemExit("Load a tape cassette."))
     @patch("ptp300bt.printer.serial.Serial")
     def test_converts_command_line_exit_to_recoverable_error(
-        self, serial_factory, _do_print_job, reset_printer
+        self, serial_factory, do_print_job, reset_printer
     ):
         connection = Mock()
         serial_factory.return_value = connection
+        output = io.StringIO()
 
         with self.assertRaisesRegex(RuntimeError, "Load a tape cassette"):
-            print_raster("COM4", b"raster", PrinterOptions())
+            print_raster("COM4", b"raster", PrinterOptions(), output)
 
+        self.assertIs(do_print_job.call_args.kwargs["output"], output)
         reset_printer.assert_called_once_with(connection)
         connection.close.assert_called_once_with()
 

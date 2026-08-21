@@ -89,6 +89,7 @@ app_ui = ui.page_navbar(
                         ui.input_checkbox("auto_cut", "Cut/boundary mark", False),
                     ),
                     ui.input_task_button("print", "Print label", class_="btn-primary w-100"),
+                    ui.div(ui.output_text_verbatim("print_log"), class_="print-console mt-3"),
                     ui.div(ui.output_ui("print_status"), class_="status-panel mt-3"),
                     full_screen=True,
                 ),
@@ -185,13 +186,18 @@ def server(input, output, session):
     @ui.bind_task_button(button_id="print")
     @reactive.extended_task
     async def run_print(port: str, data: bytes, chain: bool, auto_cut: bool, end_margin: int):
-        await asyncio.to_thread(
-            print_raster,
-            port,
-            data,
-            PrinterOptions(chain=chain, auto_cut=auto_cut, end_margin=end_margin),
-        )
-        return f"Printed successfully on {port}."
+        print_output = io.StringIO()
+        try:
+            await asyncio.to_thread(
+                print_raster,
+                port,
+                data,
+                PrinterOptions(chain=chain, auto_cut=auto_cut, end_margin=end_margin),
+                print_output,
+            )
+        except Exception as error:
+            return False, str(error), print_output.getvalue()
+        return True, f"Printed successfully on {port}.", print_output.getvalue()
 
     @reactive.effect
     @reactive.event(input.print)
@@ -209,10 +215,18 @@ def server(input, output, session):
     @render.ui
     def print_status():
         try:
-            message = run_print.result()
-        except Exception as error:
-            return ui.div(str(error), class_="text-danger")
-        return ui.div(message, class_="text-success")
+            success, message, _log = run_print.result()
+        except Exception:
+            return None
+        return ui.div(message, class_="text-success" if success else "text-danger")
+
+    @render.text
+    def print_log():
+        try:
+            _success, _message, log = run_print.result()
+        except Exception:
+            return "Printer output will appear here."
+        return log or "No printer output was produced."
 
 
 app = App(app_ui, server, static_assets=Path(__file__).parent / "www")

@@ -172,48 +172,49 @@ def describe_flag(flagset, descset):
         flagset >>= 1
     return ', '.join(flags)
 
-def print_status(stat, verbose=False):
+def print_status(stat, verbose=False, file=None):
+    file = file or sys.stdout
     # 0:4
     if bytes(stat.magic) != b'\x80\x20B0':
         raise RuntimeError('Invalid magic')
     # 4
-    print(f'Model: {describe_code(stat.model, MODELS)}')
+    print(f'Model: {describe_code(stat.model, MODELS)}', file=file)
 
     # 5:8
     if (verbose):
-        print(f'Country: 0x{stat.country:02x}')
-        print(f'Extended error: 0x{stat._err2:02x}')
-        print(f'Power: {describe_code(stat._power, POWER)}')
+        print(f'Country: 0x{stat.country:02x}', file=file)
+        print(f'Extended error: 0x{stat._err2:02x}', file=file)
+        print(f'Power: {describe_code(stat._power, POWER)}', file=file)
     # 8:12
-    print(f'Errors: {describe_flag(stat.err, ERR_FLAGS)}')
-    print(f'Tape width: {stat.tape_width}mm')
-    print(f'Tape type: {describe_code(stat.tape_type, TAPE_TYPE)}')
+    print(f'Errors: {describe_flag(stat.err, ERR_FLAGS)}', file=file)
+    print(f'Tape width: {stat.tape_width}mm', file=file)
+    print(f'Tape type: {describe_code(stat.tape_type, TAPE_TYPE)}', file=file)
     # 12:15
     if (verbose):
         pass
     # 15
-    print(f'Print flags: {describe_flag(stat.mode, PRINT_FLAGS)}')
+    print(f'Print flags: {describe_flag(stat.mode, PRINT_FLAGS)}', file=file)
     # 16
     if (verbose):
         pass
     # 17
     # This would be uglier if written as an f string, so just leave as-is
-    print('Fixed label length: {}'.format('{}mm'.format(stat.tape_length) if stat.tape_length != 0 else 'N/A'))
+    print('Fixed label length: {}'.format('{}mm'.format(stat.tape_length) if stat.tape_length != 0 else 'N/A'), file=file)
     # 18
-    print(f'Status: {describe_code(stat.status_type, STATUS_TYPE)}')
+    print(f'Status: {describe_code(stat.status_type, STATUS_TYPE)}', file=file)
     # 19:22
-    print(f'Phase: {describe_code(stat.phase_type << 16 | stat.phase, PHASES)}')
+    print(f'Phase: {describe_code(stat.phase_type << 16 | stat.phase, PHASES)}', file=file)
     # 22
-    print(f'Notification: {describe_code(stat.notification, NOTIFICATIONS)}')
+    print(f'Notification: {describe_code(stat.notification, NOTIFICATIONS)}', file=file)
     # 23
     if (verbose):
-        print(f'Expansion size: 0x{stat.expansion_area:02x}')
+        print(f'Expansion size: 0x{stat.expansion_area:02x}', file=file)
     # 24:26
-    print(f'Tape background: {describe_code(stat.tape_bgcolor, TAPE_BGCOLORS)}')
-    print(f'Tape foreground: {describe_code(stat.tape_fgcolor, TAPE_FGCOLORS)}')
+    print(f'Tape background: {describe_code(stat.tape_bgcolor, TAPE_BGCOLORS)}', file=file)
+    print(f'Tape foreground: {describe_code(stat.tape_fgcolor, TAPE_FGCOLORS)}', file=file)
     # 26
     if (verbose):
-        print(f'Hardware settings: 0x{stat.hw_settings:08x}')
+        print(f'Hardware settings: 0x{stat.hw_settings:08x}', file=file)
 
 def unpack_status(bytes_):
     if len(bytes_) != 32:

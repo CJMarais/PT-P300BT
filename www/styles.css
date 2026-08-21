@@ -23,4 +23,9 @@ body { background: #eef1f2; color: var(--ink); }
 .preview-error { color: #a33a32; }
 .label-metrics { color: var(--muted); font-variant-numeric: tabular-nums; }
 .status-panel { min-height: 2.25rem; }
+.print-console {
+  height: 240px; overflow: auto; padding: 12px 14px; border: 1px solid #cad2d7;
+  border-radius: 10px; background: #10171b; color: #d8e3e8;
+}
+.print-console pre { margin: 0; white-space: pre; font-size: .82rem; }
 .btn-primary { background: var(--accent); border-color: var(--accent); }

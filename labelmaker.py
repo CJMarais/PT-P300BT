@@ -109,22 +109,23 @@ def configure_printer(ser, raster_lines, tape_dim, compress=True, chaining=False
     # Set compression mode: TIFF
     ser.write(ptcbp.serialize_control('compression', ptcbp.CompressionType.rle if compress else ptcbp.CompressionType.none))
 
-def do_print_job(ser, args, data):
-    print('=> Querying printer status...')
+def do_print_job(ser, args, data, output=None):
+    output = output or sys.stdout
+    print('=> Querying printer status...', file=output)
 
     reset_printer(ser)
 
     # Dump status
     ser.write(ptcbp.serialize_control('get_status'))
     status = ptstatus.unpack_status(ser.read(32))
-    ptstatus.print_status(status)
+    ptstatus.print_status(status, file=output)
 
     if status.err != 0x0000 or status.phase_type != 0x00 or status.phase != 0x0000:
         message = printer_not_ready_message(status)
-        print(f'** {message}')
+        print(f'** {message}', file=output)
         sys.exit(message)
 
-    print('=> Configuring printer...')
+    print('=> Configuring printer...', file=output)
 
     raster_lines = len(data) // 16
     configure_printer(ser, raster_lines, (status.tape_type,
@@ -136,19 +137,19 @@ def do_print_job(ser, args, data):
                       compress=not args.nocomp)
 
     # Send image data
-    print(f"=> Sending image data ({raster_lines} lines)...")
-    sys.stdout.write('[')
+    print(f"=> Sending image data ({raster_lines} lines)...", file=output)
+    output.write('[')
     for line in encode_raster_transfer(data, args.nocomp):
         if line[0:1] == b'G':
-            sys.stdout.write(BARS[min((len(line) - 3) // 2, 7) + 1])
+            output.write(BARS[min((len(line) - 3) // 2, 7) + 1])
         elif line[0:1] == b'Z':
-            sys.stdout.write(BARS[0])
-        sys.stdout.flush()
+            output.write(BARS[0])
+        output.flush()
         ser.write(line)
-    sys.stdout.write(']')
+    output.write(']')
 
-    print()
-    print("=> Image data was sent successfully. Printing will begin soon.")
+    print(file=output)
+    print("=> Image data was sent successfully. Printing will begin soon.", file=output)
 
     if not args.no_print:
         # Print and feed
@@ -156,9 +157,9 @@ def do_print_job(ser, args, data):
 
         # Dump status that the printer returns
         status = ptstatus.unpack_status(ser.read(32))
-        ptstatus.print_status(status)
+        ptstatus.print_status(status, file=output)
 
-    print("=> All done.")
+    print("=> All done.", file=output)
 
 def main():
     p, args = parse_args()

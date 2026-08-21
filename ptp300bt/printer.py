@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import TextIO
 import re
 import sys
 from types import SimpleNamespace
@@ -117,7 +118,7 @@ def available_ports() -> list[SerialPortInfo]:
     return sorted(result, key=lambda item: _natural_port_key(item.device))
 
 
-def print_raster(port: str, data: bytes, options: PrinterOptions) -> None:
+def print_raster(port: str, data: bytes, options: PrinterOptions, output: TextIO | None = None) -> None:
     if not port:
         raise ValueError("Select a printer port.")
     args = SimpleNamespace(
@@ -133,7 +134,7 @@ def print_raster(port: str, data: bytes, options: PrinterOptions) -> None:
         raise RuntimeError(f'Printer on serial port "{port}" is unavailable.') from error
     try:
         try:
-            do_print_job(connection, args, data)
+            do_print_job(connection, args, data, output=output)
         except SystemExit as error:
             # labelmaker is also a command-line program and reports printer
             # status failures with sys.exit().  Do not let that terminate the
