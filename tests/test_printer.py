@@ -4,10 +4,26 @@ from types import SimpleNamespace
 import io
 
 from labelmaker import printer_not_ready_message
-from ptp300bt.printer import PrinterOptions, print_raster
+from ptp300bt.printer import PrinterOptions, print_raster, query_printer_status
 
 
 class PrintRasterTests(unittest.TestCase):
+    @patch("ptp300bt.printer.reset_printer")
+    @patch("ptp300bt.printer.query_status_register")
+    @patch("ptp300bt.printer.serial.Serial")
+    def test_queries_status_through_the_requested_output_stream(
+        self, serial_factory, query_status_register, reset_printer
+    ):
+        connection = Mock()
+        serial_factory.return_value = connection
+        output = io.StringIO()
+
+        query_printer_status("COM4", output)
+
+        query_status_register.assert_called_once_with(connection, output=output)
+        reset_printer.assert_called_once_with(connection)
+        connection.close.assert_called_once_with()
+
     @patch("ptp300bt.printer.reset_printer")
     @patch("ptp300bt.printer.do_print_job", side_effect=SystemExit("Load a tape cassette."))
     @patch("ptp300bt.printer.serial.Serial")

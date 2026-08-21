@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import serial
 from serial.tools import list_ports
 
-from labelmaker import do_print_job, reset_printer
+from labelmaker import do_print_job, query_status as query_status_register, reset_printer
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +116,22 @@ def available_ports() -> list[SerialPortInfo]:
             )
         )
     return sorted(result, key=lambda item: _natural_port_key(item.device))
+
+
+def query_printer_status(port: str, output: TextIO | None = None) -> None:
+    if not port:
+        raise ValueError("Select a printer port.")
+    try:
+        connection = serial.Serial(port, timeout=10, write_timeout=10)
+    except serial.SerialException as error:
+        raise RuntimeError(f'Printer on serial port "{port}" is unavailable.') from error
+    try:
+        query_status_register(connection, output=output)
+    finally:
+        try:
+            reset_printer(connection)
+        finally:
+            connection.close()
 
 
 def print_raster(port: str, data: bytes, options: PrinterOptions, output: TextIO | None = None) -> None:

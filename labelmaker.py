@@ -109,16 +109,19 @@ def configure_printer(ser, raster_lines, tape_dim, compress=True, chaining=False
     # Set compression mode: TIFF
     ser.write(ptcbp.serialize_control('compression', ptcbp.CompressionType.rle if compress else ptcbp.CompressionType.none))
 
-def do_print_job(ser, args, data, output=None):
+def query_status(ser, output=None):
     output = output or sys.stdout
     print('=> Querying printer status...', file=output)
-
     reset_printer(ser)
-
-    # Dump status
     ser.write(ptcbp.serialize_control('get_status'))
     status = ptstatus.unpack_status(ser.read(32))
     ptstatus.print_status(status, file=output)
+    return status
+
+
+def do_print_job(ser, args, data, output=None):
+    output = output or sys.stdout
+    status = query_status(ser, output)
 
     if status.err != 0x0000 or status.phase_type != 0x00 or status.phase != 0x0000:
         message = printer_not_ready_message(status)

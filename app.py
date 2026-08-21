@@ -6,7 +6,7 @@ from pathlib import Path
 from shiny import App, reactive, render, ui
 
 from ptp300bt.models import LabelSpec
-from ptp300bt.printer import PrinterOptions, available_ports, print_raster
+from ptp300bt.printer import PrinterOptions, available_ports, print_raster, query_printer_status
 from ptp300bt.rendering import add_preview_guides, render_label, valid_font_sizes
 
 
@@ -80,9 +80,22 @@ app_ui = ui.page_navbar(
                     ui.output_ui("preview"),
                     ui.output_ui("metrics"),
                     ui.hr(),
-                    ui.layout_columns(
-                        ui.input_select("port", "Printer port", choices={}),
-                        ui.input_action_button("refresh_ports", "Refresh ports", class_="btn-outline-secondary mt-4"),
+                    ui.div(
+                        ui.h5("Printer"),
+                        ui.layout_columns(
+                            ui.input_select("port", "Printer port", choices={}),
+                            ui.input_action_button(
+                                "refresh_ports", "Refresh ports", class_="btn-outline-secondary mt-4"
+                            ),
+                        ),
+                        ui.input_task_button(
+                            "query_status", "Query printer status", class_="btn-outline-primary w-100"
+                        ),
+                        ui.div(
+                            ui.output_text_verbatim("printer_status_output"),
+                            class_="print-console printer-status-console mt-3",
+                        ),
+                        class_="printer-section mb-4",
                     ),
                     ui.layout_columns(
                         ui.input_checkbox("chain", "Chain printing (no feed)", False),
@@ -105,6 +118,8 @@ app_ui = ui.page_navbar(
 
 
 def server(input, output, session):
+    printer_lock = asyncio.Lock()
+
     def refresh_ports() -> None:
         ports = available_ports()
         choices = {port.device: port.label for port in ports}
@@ -188,13 +203,14 @@ def server(input, output, session):
     async def run_print(port: str, data: bytes, chain: bool, auto_cut: bool, end_margin: int):
         print_output = io.StringIO()
         try:
-            await asyncio.to_thread(
-                print_raster,
-                port,
-                data,
-                PrinterOptions(chain=chain, auto_cut=auto_cut, end_margin=end_margin),
-                print_output,
-            )
+            async with printer_lock:
+                await asyncio.to_thread(
+                    print_raster,
+                    port,
+                    data,
+                    PrinterOptions(chain=chain, auto_cut=auto_cut, end_margin=end_margin),
+                    print_output,
+                )
         except Exception as error:
             return False, str(error), print_output.getvalue()
         return True, f"Printed successfully on {port}.", print_output.getvalue()
@@ -227,6 +243,37 @@ def server(input, output, session):
         except Exception:
             return "Printer output will appear here."
         return log or "No printer output was produced."
+
+    @ui.bind_task_button(button_id="query_status")
+    @reactive.extended_task
+    async def run_status_query(port: str):
+        status_output = io.StringIO()
+        try:
+            async with printer_lock:
+                await asyncio.to_thread(query_printer_status, port, status_output)
+        except Exception as error:
+            if status_output.tell():
+                status_output.write(f"\n** {error}\n")
+            else:
+                status_output.write(f"** {error}\n")
+        return status_output.getvalue()
+
+    @reactive.effect
+    @reactive.event(input.query_status)
+    def _query_status():
+        port = input.port()
+        if not port:
+            ui.notification_show("No printer port is available.", type="error")
+            return
+        run_status_query(port)
+
+    @render.text
+    def printer_status_output():
+        try:
+            log = run_status_query.result()
+        except Exception:
+            return "Printer status will appear here."
+        return log or "No printer status was produced."
 
 
 app = App(app_ui, server, static_assets=Path(__file__).parent / "www")

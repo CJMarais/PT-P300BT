@@ -23,9 +23,13 @@ body { background: #eef1f2; color: var(--ink); }
 .preview-error { color: #a33a32; }
 .label-metrics { color: var(--muted); font-variant-numeric: tabular-nums; }
 .status-panel { min-height: 2.25rem; }
+.printer-section {
+  padding: 16px; border: 1px solid #d7dee2; border-radius: 12px; background: #f7f9fa;
+}
 .print-console {
   height: 240px; overflow: auto; padding: 12px 14px; border: 1px solid #cad2d7;
   border-radius: 10px; background: #10171b; color: #d8e3e8;
 }
+.printer-status-console { height: 260px; }
 .print-console pre { margin: 0; white-space: pre; font-size: .82rem; }
 .btn-primary { background: var(--accent); border-color: var(--accent); }
