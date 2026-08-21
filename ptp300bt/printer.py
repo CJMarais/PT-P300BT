@@ -132,7 +132,14 @@ def print_raster(port: str, data: bytes, options: PrinterOptions) -> None:
     except serial.SerialException as error:
         raise RuntimeError(f'Printer on serial port "{port}" is unavailable.') from error
     try:
-        do_print_job(connection, args, data)
+        try:
+            do_print_job(connection, args, data)
+        except SystemExit as error:
+            # labelmaker is also a command-line program and reports printer
+            # status failures with sys.exit().  Do not let that terminate the
+            # Shiny worker/session when this module is used as a service.
+            message = error.code if isinstance(error.code, str) else "Printer is not ready."
+            raise RuntimeError(message) from error
     finally:
         try:
             reset_printer(connection)

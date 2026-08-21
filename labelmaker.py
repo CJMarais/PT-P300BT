@@ -8,6 +8,46 @@ import contextlib
 import ctypes
 import ptcbp
 import ptstatus
+
+
+PRINTER_ERROR_MESSAGES = {
+    0: 'Replace the tape cassette.',
+    1: 'The printer expansion buffer is full. Reset the printer and try again.',
+    2: 'A communication error occurred. Check the Bluetooth connection and try again.',
+    3: 'The communication buffer is full. Wait briefly and try again.',
+    4: 'Close the tape cassette cover.',
+    5: 'Printing was cancelled or the printer is too hot. Let it cool, then try again.',
+    6: 'A tape feed error occurred. Check that the cassette is seated and the tape can move freely.',
+    7: 'The printer reported a system error. Power-cycle it and try again.',
+    8: 'Load a tape cassette.',
+    9: 'The tape ended or the label is too long. Replace the cassette or shorten the label.',
+    10: 'The cutter is jammed. Clear the jam before trying again.',
+    11: 'The printer battery is low. Replace or recharge the batteries.',
+    12: 'The printer is currently in use. Wait for it to finish and try again.',
+    13: 'The printer is not powered on.',
+    14: 'The printer detected overvoltage. Disconnect the power source and check it.',
+    15: 'The printer reported a fan error.',
+}
+
+
+def printer_not_ready_message(status):
+    """Build a user-facing message from all active printer status flags."""
+    messages = [
+        message
+        for bit, message in PRINTER_ERROR_MESSAGES.items()
+        if status.err & (1 << bit)
+    ]
+    unknown_flags = status.err & ~sum(1 << bit for bit in PRINTER_ERROR_MESSAGES)
+    if unknown_flags:
+        messages.append(f'Unknown printer error flags: 0x{unknown_flags:04x}.')
+    if messages:
+        return 'Printer is not ready. ' + ' '.join(messages)
+
+    phase = status.phase_type << 16 | status.phase
+    phase_name = ptstatus.PHASES.get(phase)
+    if phase_name:
+        return f'Printer is not ready because it is in the {phase_name.lower()} phase. Wait and try again.'
+    return f'Printer is not ready (phase 0x{phase:06x}). Reset it and try again.'
 import serial
 
 BARS = '123456789'
@@ -80,8 +120,9 @@ def do_print_job(ser, args, data):
     ptstatus.print_status(status)
 
     if status.err != 0x0000 or status.phase_type != 0x00 or status.phase != 0x0000:
-        print('** Printer indicates that it is not ready. Refusing to continue.')
-        sys.exit(1)
+        message = printer_not_ready_message(status)
+        print(f'** {message}')
+        sys.exit(message)
 
     print('=> Configuring printer...')
 
