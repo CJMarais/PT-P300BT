@@ -30,7 +30,12 @@ app_ui = ui.page_navbar(
         ui.div(
             ui.layout_columns(
                 ui.card(
-                    ui.card_header("Label editor"),
+                    ui.card_header(
+                        ui.div(
+                            ui.div("Label editor", class_="section-title"),
+                            ui.div("Define the label content and print geometry.", class_="section-description"),
+                        )
+                    ),
                     ui.input_text_area("text", "Label text", "SERVER RACK 3", rows=4),
                     ui.input_select("font", "Font", choices=FONTS),
                     ui.input_select(
@@ -74,14 +79,23 @@ app_ui = ui.page_navbar(
                     ui.input_slider("line_spacing", "Line spacing", 0.8, 2.0, 1.2, step=0.05),
                     ui.input_checkbox("show_guides", "Show rulers and print boundaries", False),
                     full_screen=True,
+                    class_="workspace-card editor-card",
                 ),
                 ui.card(
-                    ui.card_header("Print preview"),
+                    ui.card_header(
+                        ui.div(
+                            ui.div("Print preview", class_="section-title"),
+                            ui.div("Review the rendered tape before sending it to the printer.", class_="section-description"),
+                        )
+                    ),
                     ui.output_ui("preview"),
                     ui.output_ui("metrics"),
                     ui.hr(),
                     ui.div(
-                        ui.h5("Printer"),
+                        ui.div(
+                            ui.h5("Printer", class_="section-title mb-1"),
+                            ui.p("Select a port, verify readiness, then print.", class_="section-description mb-3"),
+                        ),
                         ui.layout_columns(
                             ui.input_select("port", "Printer port", choices={}),
                             ui.input_action_button(
@@ -105,15 +119,80 @@ app_ui = ui.page_navbar(
                     ui.div(ui.output_text_verbatim("print_log"), class_="print-console mt-3"),
                     ui.div(ui.output_ui("print_status"), class_="status-panel mt-3"),
                     full_screen=True,
+                    class_="workspace-card preview-card",
                 ),
                 col_widths=(5, 7),
             ),
             class_="app-shell py-4",
         ),
     ),
+    ui.nav_control(
+        ui.div(
+            ui.tags.label("Theme", for_="theme_preference", class_="theme-label"),
+            ui.tags.select(
+                ui.tags.option("System", value="system"),
+                ui.tags.option("Light", value="light"),
+                ui.tags.option("Dark", value="dark"),
+                id="theme_preference",
+                class_="theme-select",
+                aria_label="Colour theme",
+            ),
+            class_="theme-control",
+        )
+    ),
     title="P-touch Studio",
     window_title="P-touch Studio",
-    header=ui.tags.link(rel="stylesheet", href="styles.css"),
+    header=ui.TagList(
+        ui.tags.link(rel="stylesheet", href="styles.css?v=8"),
+        ui.tags.script(
+            """
+            (() => {
+              const storageKey = "ptouch-theme";
+              const validThemes = new Set(["light", "dark", "system"]);
+              const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+
+              const savedTheme = (() => {
+                try {
+                  const saved = window.localStorage.getItem(storageKey);
+                  return validThemes.has(saved) ? saved : "system";
+                } catch (_error) {
+                  return "system";
+                }
+              })();
+
+              let selectedTheme = savedTheme;
+
+              const applyTheme = (theme) => {
+                const useDark = theme === "dark" || (theme === "system" && systemTheme.matches);
+                document.documentElement.classList.toggle("dark", useDark);
+                document.documentElement.dataset.theme = theme;
+                document.documentElement.style.colorScheme = useDark ? "dark" : "light";
+              };
+
+              applyTheme(selectedTheme);
+
+              window.addEventListener("DOMContentLoaded", () => {
+                const selector = document.getElementById("theme_preference");
+                if (!selector) return;
+                selector.value = selectedTheme;
+                selector.addEventListener("change", (event) => {
+                  selectedTheme = validThemes.has(event.target.value) ? event.target.value : "system";
+                  try {
+                    window.localStorage.setItem(storageKey, selectedTheme);
+                  } catch (_error) {
+                    // Theme selection still applies when storage is unavailable.
+                  }
+                  applyTheme(selectedTheme);
+                });
+              });
+
+              systemTheme.addEventListener("change", () => {
+                if (selectedTheme === "system") applyTheme(selectedTheme);
+              });
+            })();
+            """
+        ),
+    ),
 )
 
 
