@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import math
 from pathlib import Path
+import re
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
@@ -12,6 +13,9 @@ DOT_PITCH_MM = 0.149
 LEADER_AND_FOOTER_MM = 26.0
 MAX_USED_LENGTH_MM = 499.0
 TAPE_HEIGHT = 86
+TRANSPARENT_CANVAS = "#f4f4f4"
+CHECKERBOARD_SECONDARY = "#dcdcdc"
+CHECKER_SIZE = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +27,45 @@ class LabelRenderResult:
     printed_length_mm: float
     used_length_mm: float
     cable_gap_mm: float | None = None
+
+
+def _checkerboard(size: tuple[int, int]) -> Image.Image:
+    checkerboard = Image.new("RGB", size, TRANSPARENT_CANVAS)
+    checker_draw = ImageDraw.Draw(checkerboard)
+    for y in range(0, size[1], CHECKER_SIZE):
+        for x in range(0, size[0], CHECKER_SIZE):
+            if (x // CHECKER_SIZE + y // CHECKER_SIZE) % 2:
+                checker_draw.rectangle(
+                    (x, y, x + CHECKER_SIZE - 1, y + CHECKER_SIZE - 1),
+                    fill=CHECKERBOARD_SECONDARY,
+                )
+    return checkerboard
+
+
+def _preview_background(size: tuple[int, int], color: str) -> Image.Image:
+    if color == "transparent":
+        return _checkerboard(size)
+    rgba = re.fullmatch(
+        r"rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(0(?:\.\d+)?|1(?:\.0+)?)\s*\)",
+        color,
+        re.IGNORECASE,
+    )
+    if rgba:
+        red, green, blue = (int(rgba.group(index)) for index in range(1, 4))
+        alpha = round(float(rgba.group(4)) * 255)
+        overlay = Image.new("RGBA", size, (red, green, blue, alpha))
+        return Image.alpha_composite(_checkerboard(size).convert("RGBA"), overlay).convert("RGB")
+    return Image.new("RGB", size, color)
+
+
+def colorize_preview(image: Image.Image, background: str, foreground: str) -> Image.Image:
+    """Apply cassette colours to a monochrome preview without changing print data."""
+    background_image = _preview_background(image.size, background)
+    if foreground == "transparent":
+        return background_image
+    ink = Image.new("RGB", image.size, foreground)
+    ink_mask = ImageOps.invert(image.convert("L"))
+    return Image.composite(ink, background_image, ink_mask)
 
 
 def add_preview_guides(image: Image.Image) -> Image.Image:

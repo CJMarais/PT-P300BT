@@ -6,8 +6,8 @@ from pathlib import Path
 from shiny import App, reactive, render, ui
 
 from ptp300bt.models import LabelSpec
-from ptp300bt.printer import PrinterOptions, available_ports, print_raster, query_printer_status
-from ptp300bt.rendering import add_preview_guides, render_label, valid_font_sizes
+from ptp300bt.printer import TapeColors, PrinterOptions, available_ports, print_raster, query_printer_status
+from ptp300bt.rendering import add_preview_guides, colorize_preview, render_label, valid_font_sizes
 
 
 def system_fonts() -> dict[str, str]:
@@ -198,6 +198,7 @@ app_ui = ui.page_navbar(
 
 def server(input, output, session):
     printer_lock = asyncio.Lock()
+    tape_colors = reactive.value(TapeColors())
 
     def refresh_ports() -> None:
         ports = available_ports()
@@ -254,7 +255,12 @@ def server(input, output, session):
         except ValueError as error:
             return ui.div(str(error), class_="preview-stage preview-error")
         buffer = io.BytesIO()
-        preview_image = add_preview_guides(result.preview) if input.show_guides() else result.preview
+        colors = tape_colors.get()
+        preview_image = colorize_preview(
+            result.preview, colors.background_hex, colors.foreground_hex
+        )
+        if input.show_guides():
+            preview_image = add_preview_guides(preview_image)
         preview_image.save(buffer, format="PNG")
         encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
         return ui.div(
@@ -329,13 +335,23 @@ def server(input, output, session):
         status_output = io.StringIO()
         try:
             async with printer_lock:
-                await asyncio.to_thread(query_printer_status, port, status_output)
+                colors = await asyncio.to_thread(query_printer_status, port, status_output)
         except Exception as error:
             if status_output.tell():
                 status_output.write(f"\n** {error}\n")
             else:
                 status_output.write(f"** {error}\n")
-        return status_output.getvalue()
+            return False, status_output.getvalue(), None
+        return True, status_output.getvalue(), colors
+
+    @reactive.effect
+    def _apply_queried_tape_colors():
+        try:
+            success, _log, colors = run_status_query.result()
+        except Exception:
+            return
+        if success and colors is not None:
+            tape_colors.set(colors)
 
     @reactive.effect
     @reactive.event(input.query_status)
@@ -349,7 +365,7 @@ def server(input, output, session):
     @render.text
     def printer_status_output():
         try:
-            log = run_status_query.result()
+            _success, log, _colors = run_status_query.result()
         except Exception:
             return "Printer status will appear here."
         return log or "No printer status was produced."

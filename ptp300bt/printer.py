@@ -8,6 +8,7 @@ import serial
 from serial.tools import list_ports
 
 from labelmaker import do_print_job, query_status as query_status_register, reset_printer
+import ptstatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +17,46 @@ class PrinterOptions:
     auto_cut: bool = False
     end_margin: int = 0
     compression: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class TapeColors:
+    """Display colours for the cassette reported by Brother's status protocol."""
+
+    background_name: str = "White"
+    background_hex: str = "#ffffff"
+    foreground_name: str = "Black"
+    foreground_hex: str = "#1a1a1a"
+
+
+# Brother defines the protocol IDs and colour names, but does not publish an RGB
+# palette. These screen colours are deliberately approximate representations.
+TAPE_BACKGROUND_HEX = {
+    0x01: "#ffffff", 0x02: "#808080", 0x03: "transparent", 0x04: "#d32f2f", 0x05: "#1565c0",
+    0x06: "#ffc107", 0x07: "#2e7d32", 0x08: "#1f1f1f", 0x09: "transparent",
+    0x20: "#fafafa", 0x21: "rgba(245,245,245,0.4)", 0x22: "#b0bec5", 0x23: "#d4af37",
+    0x24: "#c0c0c0", 0x30: "#0d47a1", 0x31: "#b71c1c", 0x40: "#ff6e14",
+    0x41: "#dfff00", 0x50: "#e0115f", 0x51: "#eceff1", 0x52: "#a2e8a2",
+    0x60: "#ffe082", 0x61: "#f8bbd0", 0x62: "#b3e5fc", 0x70: "#f5f5f5",
+    0x90: "#ffffff", 0x91: "#ffc107", 0xF0: "transparent",
+    0xF1: "rgba(63,81,181,0.6)", 0xFF: "#ff00ff",
+}
+TAPE_FOREGROUND_HEX = {
+    0x01: "#ffffff", 0x02: "#808080", 0x04: "#d32f2f", 0x05: "#1565c0",
+    0x08: "#1a1a1a", 0x0A: "#d4af37", 0x62: "#0033a0", 0xF0: "transparent",
+    0xF1: "#3f51b5", 0xFF: "#ff00ff",
+}
+
+
+def tape_colors_from_status(status: object) -> TapeColors:
+    background_code = status.tape_bgcolor
+    foreground_code = status.tape_fgcolor
+    return TapeColors(
+        background_name=ptstatus.TAPE_BGCOLORS.get(background_code, "Unknown"),
+        background_hex=TAPE_BACKGROUND_HEX.get(background_code, "#ffffff"),
+        foreground_name=ptstatus.TAPE_FGCOLORS.get(foreground_code, "Unknown"),
+        foreground_hex=TAPE_FOREGROUND_HEX.get(foreground_code, "#1a1a1a"),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +159,7 @@ def available_ports() -> list[SerialPortInfo]:
     return sorted(result, key=lambda item: _natural_port_key(item.device))
 
 
-def query_printer_status(port: str, output: TextIO | None = None) -> None:
+def query_printer_status(port: str, output: TextIO | None = None) -> TapeColors:
     if not port:
         raise ValueError("Select a printer port.")
     try:
@@ -126,7 +167,8 @@ def query_printer_status(port: str, output: TextIO | None = None) -> None:
     except serial.SerialException as error:
         raise RuntimeError(f'Printer on serial port "{port}" is unavailable.') from error
     try:
-        query_status_register(connection, output=output)
+        status = query_status_register(connection, output=output)
+        return tape_colors_from_status(status)
     finally:
         try:
             reset_printer(connection)

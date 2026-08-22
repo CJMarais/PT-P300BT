@@ -2,7 +2,7 @@ import unittest
 import math
 from pathlib import Path
 
-from ptp300bt import LabelSpec, add_preview_guides, render_label, valid_font_sizes
+from ptp300bt import LabelSpec, add_preview_guides, colorize_preview, render_label, valid_font_sizes
 
 
 FONT = Path("C:/Windows/Fonts/arial.ttf")
@@ -39,8 +39,55 @@ class RenderLabelTests(unittest.TestCase):
         self.assertEqual(guided.size, result.preview.size)
         self.assertEqual(result.preview.tobytes(), original_bytes)
         self.assertNotEqual(guided.tobytes(), original_bytes)
-        self.assertEqual(guided.getpixel((0, 0)), (0, 255, 255))
-        self.assertEqual(guided.getpixel((0, 11)), (255, 0, 0))
+        self.assertNotEqual(guided.getpixel((0, 0)), result.preview.getpixel((0, 0)))
+
+    def test_colorizes_preview_without_changing_print_raster(self):
+        result = render_label(LabelSpec(text="BLUE", font_path=str(FONT)))
+        raster = result.raster_data
+
+        colored = colorize_preview(result.preview, "#ffffff", "#4c8fd5")
+
+        self.assertEqual(colored.getpixel((0, 0)), (255, 255, 255))
+        self.assertIn((76, 143, 213), {color for _count, color in colored.getcolors()})
+        self.assertEqual(result.raster_data, raster)
+
+    def test_guides_remain_visible_on_blue_tape(self):
+        result = render_label(LabelSpec(text="GUIDED", font_path=str(FONT)))
+        colored = colorize_preview(result.preview, "#2155a5", "#ffffff")
+
+        guided = add_preview_guides(colored)
+
+        self.assertNotEqual(guided.getpixel((0, 0)), colored.getpixel((0, 0)))
+
+    def test_transparent_tape_uses_checkerboard_canvas(self):
+        result = render_label(LabelSpec(text="CLEAR", font_path=str(FONT)))
+
+        colored = colorize_preview(result.preview, "transparent", "#1a1a1a")
+
+        colors = {color for _count, color in colored.getcolors(maxcolors=256)}
+        self.assertIn((244, 244, 244), colors)
+        self.assertIn((220, 220, 220), colors)
+        self.assertIn((26, 26, 26), colors)
+
+    def test_transparent_cleaning_ink_does_not_draw_label_text(self):
+        result = render_label(LabelSpec(text="CLEAN", font_path=str(FONT)))
+
+        colored = colorize_preview(result.preview, "#ffffff", "transparent")
+
+        self.assertEqual(colored.getcolors(), [(colored.width * colored.height, (255, 255, 255))])
+
+    def test_semitransparent_tape_is_composited_over_checkerboard(self):
+        result = render_label(LabelSpec(text="MATTE", font_path=str(FONT)))
+
+        colored = colorize_preview(
+            result.preview, "rgba(245,245,245,0.4)", "#1a1a1a"
+        )
+
+        background_colors = {
+            colored.getpixel((0, 0)),
+            colored.getpixel((8, 0)),
+        }
+        self.assertEqual(background_colors, {(244, 244, 244), (230, 230, 230)})
 
     def test_valid_font_sizes_fit_current_text_layout(self):
         single_line = valid_font_sizes("LABEL", str(FONT))
